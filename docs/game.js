@@ -46,7 +46,39 @@ class Game {
         this.predictionsSubmitted = false;
         this.trumpSelected = false;
         this.currentSet = [];
-        this.gamePhase = 'preview'; // 'preview', 'prediction', 'trump', 'play'
+        this.gamePhase = 'preview';
+        this.playerIndex = -1; // Current player's index in the game
+    }
+
+    initializeFromState(gameState) {
+        console.log('Initializing game from state:', gameState);
+        this.currentRound = gameState.round;
+        this.trumpSuit = gameState.trumpSuit;
+        this.currentPlayer = gameState.currentPlayer;
+        this.currentSet = gameState.currentSet;
+        this.predictions = gameState.predictions;
+        this.setsWon = gameState.setsWon;
+        this.scores = gameState.scores;
+        
+        // Initialize deck and deal cards
+        this.initializeDeck();
+        this.shuffleDeck();
+        this.dealCards();
+        
+        this.updateUI();
+    }
+
+    updateFromState(gameState) {
+        console.log('Updating game from state:', gameState);
+        this.currentRound = gameState.round;
+        this.trumpSuit = gameState.trumpSuit;
+        this.currentPlayer = gameState.currentPlayer;
+        this.currentSet = gameState.currentSet;
+        this.predictions = gameState.predictions;
+        this.setsWon = gameState.setsWon;
+        this.scores = gameState.scores;
+        
+        this.updateUI();
     }
 
     initializeDeck() {
@@ -74,197 +106,150 @@ class Game {
         const cardsPerPlayer = Math.floor(this.deck.length / this.players.length);
         for (let i = 0; i < this.players.length; i++) {
             this.players[i].hand = this.deck.slice(i * cardsPerPlayer, (i + 1) * cardsPerPlayer);
-            this.showInitialCards(i);
-        }
-    }
-
-    showInitialCards(playerIndex) {
-        const player = this.players[playerIndex];
-        player.visibleCardIndices.clear();
-        while (player.visibleCardIndices.size < 4) {
-            player.visibleCardIndices.add(Math.floor(Math.random() * player.hand.length));
-        }
-    }
-
-    getTotalPossibleSets() {
-        // Calculate total possible sets based on number of cards per player
-        return this.players[0].hand.length;
-    }
-
-    getCurrentTotalPredictions() {
-        return this.players.reduce((sum, player) => 
-            sum + (player.prediction !== null ? player.prediction : 0), 0);
-    }
-
-    isValidPrediction(playerIndex, prediction) {
-        const totalSets = this.getTotalPossibleSets();
-        const currentTotal = this.getCurrentTotalPredictions();
-        const isLastPlayer = playerIndex === this.players.length - 1;
-
-        // Basic validation
-        if (prediction < 0 || prediction > totalSets) {
-            return {
-                valid: false,
-                message: `Prediction must be between 0 and ${totalSets}`
-            };
-        }
-
-        // Special rule for last player
-        if (isLastPlayer && (currentTotal + prediction === totalSets)) {
-            return {
-                valid: false,
-                message: `Last player's prediction cannot make total equal ${totalSets}`
-            };
-        }
-
-        return { valid: true };
-    }
-
-    submitPrediction(playerIndex, prediction) {
-        const validationResult = this.isValidPrediction(playerIndex, prediction);
-        if (!validationResult.valid) {
-            return validationResult;
-        }
-
-        this.players[playerIndex].prediction = prediction;
-        this.currentPlayer = (playerIndex + 1) % this.players.length;
-        
-        if (this.players.every(p => p.prediction !== null)) {
-            this.predictionsSubmitted = true;
-            this.findHighestPrediction();
-            this.gamePhase = 'trump';
-        }
-
-        return { valid: true };
-    }
-
-    findHighestPrediction() {
-        let maxPrediction = -1;
-        let maxPlayer = -1;
-        this.players.forEach((player, index) => {
-            if (player.prediction > maxPrediction) {
-                maxPrediction = player.prediction;
-                maxPlayer = index;
+            if (i === this.playerIndex) {
+                // Only show 4 random cards initially to the current player
+                const indices = new Set();
+                while (indices.size < 4) {
+                    indices.add(Math.floor(Math.random() * this.players[i].hand.length));
+                }
+                this.players[i].hand.forEach((card, index) => {
+                    card.visible = indices.has(index);
+                });
             }
-        });
-        this.currentPlayer = maxPlayer;
+        }
     }
 
-    setTrump(suit) {
-        this.trumpSuit = suit;
-        this.trumpSelected = true;
-        this.gamePhase = 'play';
-        // After trump is selected, show all cards to all players
+    makeCardVisible(playerIndex, cardIndex) {
+        if (playerIndex >= 0 && playerIndex < this.players.length) {
+            const player = this.players[playerIndex];
+            if (cardIndex >= 0 && cardIndex < player.hand.length) {
+                player.hand[cardIndex].visible = true;
+            }
+        }
+    }
+
+    makeAllCardsVisible() {
         this.players.forEach(player => {
-            player.visibleCardIndices.clear();
-            for (let i = 0; i < player.hand.length; i++) {
-                player.visibleCardIndices.add(i);
-            }
+            player.hand.forEach(card => card.visible = true);
         });
     }
 
-    playCard(playerIndex, cardIndex) {
-        if (this.gamePhase !== 'play' || playerIndex !== this.currentPlayer) return false;
+    playCard(cardIndex) {
+        if (this.gamePhase !== 'play' || this.currentPlayer !== this.playerIndex) return false;
         
-        const player = this.players[playerIndex];
+        const player = this.players[this.playerIndex];
         const card = player.hand[cardIndex];
 
-        // Check if player must follow suit
-        if (this.leadingSuit && player.hand.some(c => c.suit === this.leadingSuit)) {
-            if (card.suit !== this.leadingSuit) return false;
-        }
-
-        // Play the card
-        this.currentSet.push({
-            card: card,
-            playerIndex: playerIndex
-        });
-        player.hand.splice(cardIndex, 1);
-        player.visibleCardIndices.delete(cardIndex);
-        // Adjust remaining visible card indices
-        const newVisibleIndices = new Set();
-        player.visibleCardIndices.forEach(index => {
-            if (index < cardIndex) {
-                newVisibleIndices.add(index);
-            } else if (index > cardIndex) {
-                newVisibleIndices.add(index - 1);
+        // Emit the card play event
+        socket.emit('gameAction', {
+            roomCode: currentRoom,
+            action: 'playCard',
+            data: {
+                cardIndex: cardIndex,
+                card: {
+                    suit: card.suit,
+                    value: card.value
+                }
             }
         });
-        player.visibleCardIndices = newVisibleIndices;
-
-        // Set leading suit if first card
-        if (this.currentSet.length === 1) {
-            this.leadingSuit = card.suit;
-        }
-
-        // If all players have played, determine winner
-        if (this.currentSet.length === this.players.length) {
-            this.determineSetWinner();
-        } else {
-            this.currentPlayer = (this.currentPlayer + 1) % this.players.length;
-        }
 
         return true;
     }
 
-    determineSetWinner() {
-        let winningCard = this.currentSet[0];
-        for (let i = 1; i < this.currentSet.length; i++) {
-            const currentCard = this.currentSet[i];
-            if (currentCard.card.suit === this.trumpSuit && winningCard.card.suit !== this.trumpSuit) {
-                winningCard = currentCard;
-            } else if (currentCard.card.suit === winningCard.card.suit && 
-                      currentCard.card.value > winningCard.card.value) {
-                winningCard = currentCard;
+    submitPrediction(prediction) {
+        if (this.gamePhase !== 'prediction' || this.currentPlayer !== this.playerIndex) return false;
+
+        socket.emit('gameAction', {
+            roomCode: currentRoom,
+            action: 'makePrediction',
+            data: {
+                prediction: prediction
             }
-        }
-
-        const winner = winningCard.playerIndex;
-        this.players[winner].setsWon++;
-        this.currentPlayer = winner;
-        this.currentSet = [];
-        this.leadingSuit = null;
-
-        // Check if round is over
-        if (this.players[0].hand.length === 0) {
-            this.endRound();
-        }
-    }
-
-    endRound() {
-        // Calculate scores
-        this.players.forEach(player => {
-            if (player.setsWon === player.prediction) {
-                player.score += 10 + player.prediction;
-            }
-            player.setsWon = 0;
-            player.prediction = null;
         });
 
-        this.currentRound++;
-        this.trumpSuit = null;
-        this.predictionsSubmitted = false;
-        this.trumpSelected = false;
-        this.gamePhase = 'preview';
+        return true;
+    }
 
-        if (this.currentRound <= this.players.length) {
-            this.startNewRound();
-        } else {
-            this.endGame();
+    setTrump(suit) {
+        if (this.gamePhase !== 'trump' || this.currentPlayer !== this.playerIndex) return false;
+
+        socket.emit('gameAction', {
+            roomCode: currentRoom,
+            action: 'setTrump',
+            data: {
+                trumpSuit: suit
+            }
+        });
+
+        return true;
+    }
+
+    updateUI() {
+        // Update round and trump information
+        document.getElementById('current-round').textContent = this.currentRound;
+        document.getElementById('current-trump').textContent = this.trumpSuit || 'Not Set';
+
+        // Update players container
+        const playersContainer = document.getElementById('players-container');
+        playersContainer.innerHTML = '';
+        this.players.forEach((player, index) => {
+            const playerDiv = document.createElement('div');
+            playerDiv.className = `player-info ${index === this.currentPlayer ? 'active' : ''}`;
+            playerDiv.innerHTML = `
+                <div>${player.name}</div>
+                <div>Prediction: ${this.predictions[player.id] !== undefined ? this.predictions[player.id] : '-'}</div>
+                <div>Sets Won: ${this.setsWon[player.id] || 0}</div>
+                <div>Score: ${this.scores[player.id] || 0}</div>
+            `;
+            playersContainer.appendChild(playerDiv);
+        });
+
+        // Update current player's hand
+        const playerHand = document.getElementById('current-player-hand');
+        playerHand.innerHTML = '';
+        if (this.playerIndex !== -1) {
+            const currentPlayer = this.players[this.playerIndex];
+            currentPlayer.hand.forEach((card, index) => {
+                const cardDiv = document.createElement('div');
+                cardDiv.className = `card ${card.suit}`;
+                if (card.visible) {
+                    cardDiv.textContent = card.toString();
+                    cardDiv.addEventListener('click', () => this.playCard(index));
+                } else {
+                    cardDiv.textContent = '?';
+                    cardDiv.classList.add('hidden-card');
+                }
+                playerHand.appendChild(cardDiv);
+            });
+        }
+
+        // Update played cards
+        const playedCards = document.getElementById('played-cards');
+        playedCards.innerHTML = '';
+        this.currentSet.forEach(playedCard => {
+            const cardDiv = document.createElement('div');
+            cardDiv.className = `card ${playedCard.card.suit}`;
+            cardDiv.textContent = new Card(playedCard.card.suit, playedCard.card.value).toString();
+            playedCards.appendChild(cardDiv);
+        });
+
+        // Show/hide controls based on game phase
+        const predictionControls = document.getElementById('prediction-controls');
+        const trumpSelection = document.getElementById('trump-selection');
+
+        predictionControls.classList.add('hidden');
+        trumpSelection.classList.add('hidden');
+
+        if (this.gamePhase === 'prediction' && this.currentPlayer === this.playerIndex) {
+            predictionControls.classList.remove('hidden');
+        } else if (this.gamePhase === 'trump' && this.currentPlayer === this.playerIndex) {
+            trumpSelection.classList.remove('hidden');
         }
     }
-
-    startNewRound() {
-        this.initializeDeck();
-        this.shuffleDeck();
-        this.dealCards();
-    }
-
-    endGame() {
-        this.gamePhase = 'end';
-        console.log("Game Over!");
-    }
 }
+
+// Create global game instance
+const game = new Game();
 
 // UI Management
 document.addEventListener('DOMContentLoaded', () => {

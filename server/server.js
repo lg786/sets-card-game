@@ -24,6 +24,21 @@ app.get('/', (req, res) => {
 
 const rooms = new Map();
 
+function createGameState(numPlayers) {
+    return {
+        round: 1,
+        currentPlayer: 0,
+        trumpSuit: null,
+        predictions: {},
+        setsWon: {},
+        scores: {},
+        currentSet: [],
+        deck: [],
+        hands: {},
+        gamePhase: 'preview'
+    };
+}
+
 io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
@@ -63,39 +78,83 @@ io.on('connection', (socket) => {
         if (!player || !player.isHost) return;
 
         room.settings = settings;
-        room.gameState = {
-            round: 1,
-            currentPlayer: 0,
-            trumpSuit: null,
-            predictions: {},
-            setsWon: {},
-            scores: {},
-            currentSet: []
-        };
-        io.to(roomCode).emit('gameStarted', room.gameState);
+        room.gameState = createGameState(room.players.length);
+        room.gameState.gamePhase = 'prediction';
+        
+        // Deal initial cards
+        const numPlayers = room.players.length;
+        const cardsPerPlayer = numPlayers === 4 ? 13 : (numPlayers === 5 ? 10 : 8);
+        
+        room.players.forEach((player, index) => {
+            room.gameState.hands[player.id] = Array(cardsPerPlayer).fill(null).map(() => ({
+                suit: ['hearts', 'diamonds', 'clubs', 'spades'][Math.floor(Math.random() * 4)],
+                value: Math.floor(Math.random() * 13) + 2
+            }));
+        });
+
+        io.to(roomCode).emit('gameStarted', {
+            ...room.gameState,
+            playerIndex: room.players.findIndex(p => p.id === socket.id)
+        });
     });
 
     socket.on('gameAction', ({roomCode, action, data}) => {
         const room = rooms.get(roomCode);
         if (!room || !room.gameState) return;
 
+        const playerIndex = room.players.findIndex(p => p.id === socket.id);
+        if (playerIndex === -1 || playerIndex !== room.gameState.currentPlayer) return;
+
         switch(action) {
             case 'makePrediction':
                 room.gameState.predictions[socket.id] = data.prediction;
-                io.to(roomCode).emit('gameStateUpdate', room.gameState);
+                if (Object.keys(room.gameState.predictions).length === room.players.length) {
+                    room.gameState.gamePhase = 'trump';
+                    // Find highest predictor
+                    let maxPrediction = -1;
+                    let maxPredictor = 0;
+                    room.players.forEach((player, index) => {
+                        const prediction = room.gameState.predictions[player.id];
+                        if (prediction > maxPrediction) {
+                            maxPrediction = prediction;
+                            maxPredictor = index;
+                        }
+                    });
+                    room.gameState.currentPlayer = maxPredictor;
+                } else {
+                    room.gameState.currentPlayer = (playerIndex + 1) % room.players.length;
+                }
                 break;
+
             case 'setTrump':
                 room.gameState.trumpSuit = data.trumpSuit;
-                io.to(roomCode).emit('gameStateUpdate', room.gameState);
+                room.gameState.gamePhase = 'play';
+                // Show all cards to all players
                 break;
+
             case 'playCard':
+                const card = room.gameState.hands[socket.id][data.cardIndex];
                 room.gameState.currentSet.push({
                     playerId: socket.id,
-                    card: data.card
+                    card: card
                 });
-                io.to(roomCode).emit('gameStateUpdate', room.gameState);
+                // Remove card from hand
+                room.gameState.hands[socket.id].splice(data.cardIndex, 1);
+
+                if (room.gameState.currentSet.length === room.players.length) {
+                    // Determine winner of the set
+                    // ... (implement set winner logic)
+                    room.gameState.currentSet = [];
+                } else {
+                    room.gameState.currentPlayer = (playerIndex + 1) % room.players.length;
+                }
                 break;
         }
+
+        io.to(roomCode).emit('gameStateUpdate', {
+            ...room.gameState,
+            playerIndex: room.players.findIndex(p => p.id === socket.id)
+        });
     });
 
     socket.on('disconnect', () => {
