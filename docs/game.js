@@ -185,6 +185,15 @@ class Game {
     }
 
     updateUI() {
+        console.log('Updating UI with game state:', {
+            round: this.currentRound,
+            phase: this.gamePhase,
+            playerIndex: this.playerIndex,
+            currentPlayer: this.currentPlayer,
+            players: this.players,
+            hands: this.players[this.playerIndex]?.hand
+        });
+
         // Update round and trump information
         document.getElementById('current-round').textContent = this.currentRound;
         document.getElementById('current-trump').textContent = this.trumpSuit || 'Not Set';
@@ -192,46 +201,55 @@ class Game {
         // Update players container
         const playersContainer = document.getElementById('players-container');
         playersContainer.innerHTML = '';
-        this.players.forEach((player, index) => {
-            const playerDiv = document.createElement('div');
-            playerDiv.className = `player-info ${index === this.currentPlayer ? 'active' : ''}`;
-            playerDiv.innerHTML = `
-                <div>${player.name}</div>
-                <div>Prediction: ${this.predictions[player.id] !== undefined ? this.predictions[player.id] : '-'}</div>
-                <div>Sets Won: ${this.setsWon[player.id] || 0}</div>
-                <div>Score: ${this.scores[player.id] || 0}</div>
-            `;
-            playersContainer.appendChild(playerDiv);
-        });
+        if (this.players) {
+            this.players.forEach((player, index) => {
+                const playerDiv = document.createElement('div');
+                playerDiv.className = `player-info ${index === this.currentPlayer ? 'active' : ''}`;
+                playerDiv.innerHTML = `
+                    <div>${player.name}</div>
+                    <div>Prediction: ${this.predictions && this.predictions[player.id] !== undefined ? this.predictions[player.id] : '-'}</div>
+                    <div>Sets Won: ${this.setsWon && this.setsWon[player.id] || 0}</div>
+                    <div>Score: ${this.scores && this.scores[player.id] || 0}</div>
+                `;
+                playersContainer.appendChild(playerDiv);
+            });
+        }
 
         // Update current player's hand
         const playerHand = document.getElementById('current-player-hand');
         playerHand.innerHTML = '';
-        if (this.playerIndex !== -1) {
+        if (this.playerIndex !== -1 && this.players && this.players[this.playerIndex]) {
             const currentPlayer = this.players[this.playerIndex];
-            currentPlayer.hand.forEach((card, index) => {
-                const cardDiv = document.createElement('div');
-                cardDiv.className = `card ${card.suit}`;
-                if (card.visible) {
-                    cardDiv.textContent = card.toString();
-                    cardDiv.addEventListener('click', () => this.playCard(index));
-                } else {
-                    cardDiv.textContent = '?';
-                    cardDiv.classList.add('hidden-card');
-                }
-                playerHand.appendChild(cardDiv);
-            });
+            if (currentPlayer.hand) {
+                console.log('Rendering hand:', currentPlayer.hand);
+                currentPlayer.hand.forEach((card, index) => {
+                    const cardDiv = document.createElement('div');
+                    cardDiv.className = `card ${card.suit}`;
+                    if (card.visible) {
+                        cardDiv.textContent = card.toString();
+                        if (this.gamePhase === 'play' && this.currentPlayer === this.playerIndex) {
+                            cardDiv.addEventListener('click', () => this.playCard(index));
+                        }
+                    } else {
+                        cardDiv.textContent = '?';
+                        cardDiv.classList.add('hidden-card');
+                    }
+                    playerHand.appendChild(cardDiv);
+                });
+            }
         }
 
         // Update played cards
         const playedCards = document.getElementById('played-cards');
         playedCards.innerHTML = '';
-        this.currentSet.forEach(playedCard => {
-            const cardDiv = document.createElement('div');
-            cardDiv.className = `card ${playedCard.card.suit}`;
-            cardDiv.textContent = new Card(playedCard.card.suit, playedCard.card.value).toString();
-            playedCards.appendChild(cardDiv);
-        });
+        if (this.currentSet) {
+            this.currentSet.forEach(playedCard => {
+                const cardDiv = document.createElement('div');
+                cardDiv.className = `card ${playedCard.card.suit}`;
+                cardDiv.textContent = new Card(playedCard.card.suit, playedCard.card.value).toString();
+                playedCards.appendChild(cardDiv);
+            });
+        }
 
         // Show/hide controls based on game phase
         const predictionControls = document.getElementById('prediction-controls');

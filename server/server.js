@@ -80,6 +80,7 @@ io.on('connection', (socket) => {
         room.settings = settings;
         room.gameState = createGameState(room.players.length);
         room.gameState.gamePhase = 'prediction';
+        room.gameState.players = room.players;
         
         // Deal initial cards
         const numPlayers = room.players.length;
@@ -92,9 +93,12 @@ io.on('connection', (socket) => {
             }));
         });
 
-        io.to(roomCode).emit('gameStarted', {
-            ...room.gameState,
-            playerIndex: room.players.findIndex(p => p.id === socket.id)
+        // Send game state to each player
+        room.players.forEach((player, index) => {
+            io.to(player.id).emit('gameStarted', {
+                ...room.gameState,
+                playerIndex: index
+            });
         });
     });
 
