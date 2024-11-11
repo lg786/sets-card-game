@@ -1,4 +1,4 @@
 const CONFIG = {
-    // Change this to your Render server URL when deployed
-    SERVER_URL: 'http://localhost:3000'
+    // Replace with your actual Render URL
+    SERVER_URL: 'https://sets-card-game.onrender.com'
 };

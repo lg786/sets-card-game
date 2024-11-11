@@ -182,3 +182,49 @@ input[type="number"] {
     gap: 10px;
     margin-top: 20px;
 }
+
+.login-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 300px;
+    margin: 0 auto;
+}
+
+.room-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.room-info {
+    background-color: rgba(52, 152, 219, 0.1);
+    padding: 15px;
+    border-radius: 5px;
+    margin: 20px 0;
+}
+
+.players-list {
+    margin: 20px 0;
+}
+
+.players-list ul {
+    list-style: none;
+    padding: 0;
+}
+
+.players-list li {
+    padding: 10px;
+    background-color: rgba(52, 152, 219, 0.1);
+    margin: 5px 0;
+    border-radius: 5px;
+}
+
+input[type="text"] {
+    padding: 10px;
+    font-size: 16px;
+    border-radius: 5px;
+    border: 1px solid #3498db;
+    width: 100%;
+    box-sizing: border-box;
+}

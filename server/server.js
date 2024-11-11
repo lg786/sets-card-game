@@ -11,6 +11,11 @@ const cors = require('cors');
 
 app.use(cors());
 
+// Basic route to verify server is running
+app.get('/', (req, res) => {
+    res.send('Sets Game Server is running!');
+});
+
 const rooms = new Map();
 
 io.on('connection', (socket) => {
@@ -68,7 +73,6 @@ io.on('connection', (socket) => {
         const room = rooms.get(roomCode);
         if (!room || !room.gameState) return;
 
-        // Handle different game actions (predictions, playing cards, etc.)
         switch(action) {
             case 'makePrediction':
                 room.gameState.predictions[socket.id] = data.prediction;
@@ -79,7 +83,6 @@ io.on('connection', (socket) => {
                 io.to(roomCode).emit('gameStateUpdate', room.gameState);
                 break;
             case 'playCard':
-                // Add card to current set
                 room.gameState.currentSet.push({
                     playerId: socket.id,
                     card: data.card
@@ -91,7 +94,6 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
-        // Remove player from their room
         rooms.forEach((room, roomCode) => {
             const playerIndex = room.players.findIndex(p => p.id === socket.id);
             if (playerIndex !== -1) {
@@ -99,7 +101,6 @@ io.on('connection', (socket) => {
                 if (room.players.length === 0) {
                     rooms.delete(roomCode);
                 } else {
-                    // If host left, make next player host
                     if (playerIndex === 0) {
                         room.players[0].isHost = true;
                     }
