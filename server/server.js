@@ -35,6 +35,7 @@ function createGameState(numPlayers) {
         currentSet: [],
         deck: [],
         hands: {},
+        visibleCards: {}, // Track which cards are visible for each player
         gamePhase: 'preview'
     };
 }
@@ -79,25 +80,34 @@ io.on('connection', (socket) => {
 
         room.settings = settings;
         room.gameState = createGameState(room.players.length);
-        room.gameState.gamePhase = 'prediction';
+        room.gameState.gamePhase = 'preview';
         room.gameState.players = room.players;
         
         // Deal initial cards
         const numPlayers = room.players.length;
         const cardsPerPlayer = numPlayers === 4 ? 13 : (numPlayers === 5 ? 10 : 8);
         
-        room.players.forEach((player, index) => {
+        room.players.forEach((player) => {
+            // Deal cards
             room.gameState.hands[player.id] = Array(cardsPerPlayer).fill(null).map(() => ({
                 suit: ['hearts', 'diamonds', 'clubs', 'spades'][Math.floor(Math.random() * 4)],
                 value: Math.floor(Math.random() * 13) + 2
             }));
+
+            // Select 4 random cards to be visible initially
+            const visibleIndices = new Set();
+            while (visibleIndices.size < 4) {
+                visibleIndices.add(Math.floor(Math.random() * cardsPerPlayer));
+            }
+            room.gameState.visibleCards[player.id] = Array.from(visibleIndices);
         });
 
         // Send game state to each player
         room.players.forEach((player, index) => {
             io.to(player.id).emit('gameStarted', {
                 ...room.gameState,
-                playerIndex: index
+                playerIndex: index,
+                visibleCards: room.gameState.visibleCards[player.id]
             });
         });
     });
@@ -133,7 +143,13 @@ io.on('connection', (socket) => {
             case 'setTrump':
                 room.gameState.trumpSuit = data.trumpSuit;
                 room.gameState.gamePhase = 'play';
-                // Show all cards to all players
+                // Make all cards visible for all players
+                room.players.forEach(player => {
+                    room.gameState.visibleCards[player.id] = Array.from(
+                        { length: room.gameState.hands[player.id].length }, 
+                        (_, i) => i
+                    );
+                });
                 break;
 
             case 'playCard':
@@ -144,6 +160,10 @@ io.on('connection', (socket) => {
                 });
                 // Remove card from hand
                 room.gameState.hands[socket.id].splice(data.cardIndex, 1);
+                // Update visible cards array
+                room.gameState.visibleCards[socket.id] = room.gameState.visibleCards[socket.id]
+                    .filter(i => i !== data.cardIndex)
+                    .map(i => i > data.cardIndex ? i - 1 : i);
 
                 if (room.gameState.currentSet.length === room.players.length) {
                     // Determine winner of the set
@@ -155,9 +175,13 @@ io.on('connection', (socket) => {
                 break;
         }
 
-        io.to(roomCode).emit('gameStateUpdate', {
-            ...room.gameState,
-            playerIndex: room.players.findIndex(p => p.id === socket.id)
+        // Send updated state to each player
+        room.players.forEach((player) => {
+            io.to(player.id).emit('gameStateUpdate', {
+                ...room.gameState,
+                playerIndex: room.players.findIndex(p => p.id === player.id),
+                visibleCards: room.gameState.visibleCards[player.id]
+            });
         });
     });
 
