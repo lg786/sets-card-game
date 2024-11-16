@@ -109,48 +109,31 @@ socket.on('gameStarted', (gameState) => {
     showGameScreen();
     
     // Initialize game with received state
-    game.players = gameState.players;
-    game.currentRound = gameState.round;
-    game.trumpSuit = gameState.trumpSuit;
-    game.currentPlayer = gameState.currentPlayer;
-    game.playerIndex = gameState.playerIndex;
-    game.gamePhase = gameState.gamePhase;
-    
-    // Initialize player hands
-    if (gameState.hands && gameState.hands[socket.id]) {
-        const playerHand = gameState.hands[socket.id].map(cardData => {
-            const card = new Card(cardData.suit, cardData.value);
-            card.visible = true; // Initially show only 4 random cards
-            return card;
-        });
-        game.players[game.playerIndex].hand = playerHand;
+    if (!game) {
+        console.error('Game object not initialized!');
+        return;
     }
-    
-    game.updateUI();
+
+    try {
+        game.updateFromState(gameState);
+    } catch (error) {
+        console.error('Error initializing game:', error);
+    }
 });
 
 socket.on('gameStateUpdate', (gameState) => {
     console.log('Game state update:', gameState);
     
-    // Update game state
-    game.currentRound = gameState.round;
-    game.trumpSuit = gameState.trumpSuit;
-    game.currentPlayer = gameState.currentPlayer;
-    game.playerIndex = gameState.playerIndex;
-    game.gamePhase = gameState.gamePhase;
-    game.currentSet = gameState.currentSet;
-    
-    // Update hands if provided
-    if (gameState.hands && gameState.hands[socket.id]) {
-        const playerHand = gameState.hands[socket.id].map(cardData => {
-            const card = new Card(cardData.suit, cardData.value);
-            card.visible = true;
-            return card;
-        });
-        game.players[game.playerIndex].hand = playerHand;
+    if (!game) {
+        console.error('Game object not initialized!');
+        return;
     }
-    
-    game.updateUI();
+
+    try {
+        game.updateFromState(gameState);
+    } catch (error) {
+        console.error('Error updating game:', error);
+    }
 });
 
 // UI Functions

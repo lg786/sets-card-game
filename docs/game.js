@@ -36,6 +36,7 @@ class Player {
 
 class Game {
     constructor() {
+        console.log('Initializing new game instance');
         this.players = [];
         this.currentRound = 1;
         this.trumpSuit = null;
@@ -52,20 +53,46 @@ class Game {
 
     updateFromState(gameState) {
         console.log('Updating game from state:', gameState);
-        this.currentRound = gameState.round;
-        this.trumpSuit = gameState.trumpSuit;
-        this.currentPlayer = gameState.currentPlayer;
-        this.playerIndex = gameState.playerIndex;
-        this.gamePhase = gameState.gamePhase;
-        this.players = gameState.players;
-        this.hands = gameState.hands;
-        this.predictions = gameState.predictions;
-        this.setsWon = gameState.setsWon;
-        this.scores = gameState.scores;
-        this.currentSet = gameState.currentSet;
-        this.visibleCards = gameState.visibleCards || [];
         
-        this.updateUI();
+        try {
+            // Update basic game state
+            this.currentRound = gameState.round;
+            this.trumpSuit = gameState.trumpSuit;
+            this.currentPlayer = gameState.currentPlayer;
+            this.playerIndex = gameState.playerIndex;
+            this.gamePhase = gameState.gamePhase;
+            this.players = gameState.players || [];
+            this.predictions = gameState.predictions || {};
+            this.setsWon = gameState.setsWon || {};
+            this.scores = gameState.scores || {};
+            this.currentSet = gameState.currentSet || [];
+            this.visibleCards = gameState.visibleCards || [];
+
+            // Update hands
+            if (gameState.hands) {
+                this.hands = {};
+                Object.keys(gameState.hands).forEach(playerId => {
+                    this.hands[playerId] = gameState.hands[playerId].map(cardData => ({
+                        suit: cardData.suit,
+                        value: cardData.value
+                    }));
+                });
+            }
+
+            console.log('Game state updated:', {
+                phase: this.gamePhase,
+                playerIndex: this.playerIndex,
+                players: this.players,
+                hands: this.hands,
+                visibleCards: this.visibleCards
+            });
+
+            this.updateUI();
+        } catch (error) {
+            console.error('Error updating game state:', error);
+            console.error('Game state that caused error:', gameState);
+            throw error;
+        }
     }
 
     updateUI() {
@@ -73,79 +100,101 @@ class Game {
             phase: this.gamePhase,
             playerIndex: this.playerIndex,
             visibleCards: this.visibleCards,
-            hand: this.hands[this.players[this.playerIndex]?.id]
+            currentPlayer: this.currentPlayer,
+            players: this.players?.length,
+            hands: this.hands ? Object.keys(this.hands).length : 0
         });
 
-        // Update round and trump information
-        document.getElementById('current-round').textContent = this.currentRound;
-        document.getElementById('current-trump').textContent = this.trumpSuit || 'Not Set';
+        try {
+            // Update round and trump information
+            document.getElementById('current-round').textContent = this.currentRound;
+            document.getElementById('current-trump').textContent = this.trumpSuit || 'Not Set';
 
-        // Update players container
-        const playersContainer = document.getElementById('players-container');
-        playersContainer.innerHTML = '';
-        if (this.players) {
-            this.players.forEach((player, index) => {
-                const playerDiv = document.createElement('div');
-                playerDiv.className = `player-info ${index === this.currentPlayer ? 'active' : ''}`;
-                playerDiv.innerHTML = `
-                    <div>${player.name}</div>
-                    <div>Prediction: ${this.predictions[player.id] !== undefined ? this.predictions[player.id] : '-'}</div>
-                    <div>Sets Won: ${this.setsWon[player.id] || 0}</div>
-                    <div>Score: ${this.scores[player.id] || 0}</div>
-                `;
-                playersContainer.appendChild(playerDiv);
-            });
-        }
-
-        // Update current player's hand
-        const playerHand = document.getElementById('current-player-hand');
-        playerHand.innerHTML = '';
-        if (this.playerIndex !== -1 && this.players && this.players[this.playerIndex]) {
-            const currentPlayer = this.players[this.playerIndex];
-            const hand = this.hands[currentPlayer.id];
-            if (hand) {
-                console.log('Rendering hand:', { hand, visibleCards: this.visibleCards });
-                hand.forEach((card, index) => {
-                    const cardDiv = document.createElement('div');
-                    cardDiv.className = `card ${card.suit}`;
-                    const isVisible = this.visibleCards.includes(index);
-                    if (isVisible) {
-                        cardDiv.textContent = `${card.value}${this.getSuitSymbol(card.suit)}`;
-                        if (this.gamePhase === 'play' && this.currentPlayer === this.playerIndex) {
-                            cardDiv.addEventListener('click', () => this.playCard(index));
-                        }
-                    } else {
-                        cardDiv.textContent = '?';
-                        cardDiv.classList.add('hidden-card');
-                    }
-                    playerHand.appendChild(cardDiv);
+            // Update players container
+            const playersContainer = document.getElementById('players-container');
+            playersContainer.innerHTML = '';
+            if (this.players && this.players.length > 0) {
+                this.players.forEach((player, index) => {
+                    const playerDiv = document.createElement('div');
+                    playerDiv.className = `player-info ${index === this.currentPlayer ? 'active' : ''}`;
+                    playerDiv.innerHTML = `
+                        <div>${player.name}</div>
+                        <div>Prediction: ${this.predictions[player.id] !== undefined ? this.predictions[player.id] : '-'}</div>
+                        <div>Sets Won: ${this.setsWon[player.id] || 0}</div>
+                        <div>Score: ${this.scores[player.id] || 0}</div>
+                    `;
+                    playersContainer.appendChild(playerDiv);
                 });
             }
-        }
 
-        // Update played cards
-        const playedCards = document.getElementById('played-cards');
-        playedCards.innerHTML = '';
-        if (this.currentSet) {
-            this.currentSet.forEach(playedCard => {
-                const cardDiv = document.createElement('div');
-                cardDiv.className = `card ${playedCard.card.suit}`;
-                cardDiv.textContent = `${playedCard.card.value}${this.getSuitSymbol(playedCard.card.suit)}`;
-                playedCards.appendChild(cardDiv);
-            });
-        }
+            // Update current player's hand
+            const playerHand = document.getElementById('current-player-hand');
+            playerHand.innerHTML = '';
+            
+            if (this.playerIndex !== -1 && this.players && this.players[this.playerIndex]) {
+                const currentPlayer = this.players[this.playerIndex];
+                const hand = this.hands[currentPlayer.id];
+                
+                console.log('Rendering hand:', {
+                    playerId: currentPlayer.id,
+                    handExists: !!hand,
+                    handLength: hand?.length,
+                    visibleCards: this.visibleCards
+                });
 
-        // Show/hide controls based on game phase
-        const predictionControls = document.getElementById('prediction-controls');
-        const trumpSelection = document.getElementById('trump-selection');
+                if (hand && hand.length > 0) {
+                    hand.forEach((card, index) => {
+                        const cardDiv = document.createElement('div');
+                        cardDiv.className = `card ${card.suit}`;
+                        const isVisible = this.visibleCards.includes(index);
+                        
+                        if (isVisible) {
+                            cardDiv.textContent = `${card.value}${this.getSuitSymbol(card.suit)}`;
+                            if (this.gamePhase === 'play' && this.currentPlayer === this.playerIndex) {
+                                cardDiv.addEventListener('click', () => this.playCard(index));
+                            }
+                        } else {
+                            cardDiv.textContent = '?';
+                            cardDiv.classList.add('hidden-card');
+                        }
+                        playerHand.appendChild(cardDiv);
+                    });
+                } else {
+                    console.warn('No hand found for current player:', currentPlayer.id);
+                }
+            } else {
+                console.warn('Invalid player index or players array:', {
+                    playerIndex: this.playerIndex,
+                    playersLength: this.players?.length
+                });
+            }
 
-        predictionControls.classList.add('hidden');
-        trumpSelection.classList.add('hidden');
+            // Update played cards
+            const playedCards = document.getElementById('played-cards');
+            playedCards.innerHTML = '';
+            if (this.currentSet && this.currentSet.length > 0) {
+                this.currentSet.forEach(playedCard => {
+                    const cardDiv = document.createElement('div');
+                    cardDiv.className = `card ${playedCard.card.suit}`;
+                    cardDiv.textContent = `${playedCard.card.value}${this.getSuitSymbol(playedCard.card.suit)}`;
+                    playedCards.appendChild(cardDiv);
+                });
+            }
 
-        if (this.gamePhase === 'prediction' && this.currentPlayer === this.playerIndex) {
-            predictionControls.classList.remove('hidden');
-        } else if (this.gamePhase === 'trump' && this.currentPlayer === this.playerIndex) {
-            trumpSelection.classList.remove('hidden');
+            // Show/hide controls based on game phase
+            const predictionControls = document.getElementById('prediction-controls');
+            const trumpSelection = document.getElementById('trump-selection');
+
+            predictionControls.classList.add('hidden');
+            trumpSelection.classList.add('hidden');
+
+            if (this.gamePhase === 'prediction' && this.currentPlayer === this.playerIndex) {
+                predictionControls.classList.remove('hidden');
+            } else if (this.gamePhase === 'trump' && this.currentPlayer === this.playerIndex) {
+                trumpSelection.classList.remove('hidden');
+            }
+        } catch (error) {
+            console.error('Error updating UI:', error);
         }
     }
 
