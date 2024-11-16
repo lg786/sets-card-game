@@ -183,29 +183,76 @@ io.on('connection', (socket) => {
 
     socket.on('gameAction', ({roomCode, action, data}) => {
         const room = rooms.get(roomCode);
-        if (!room || !room.gameState) return;
+        if (!room || !room.gameState) {
+            console.error('Invalid room or game state:', { roomCode, action });
+            return;
+        }
 
         const playerIndex = room.players.findIndex(p => p.id === socket.id);
-        if (playerIndex === -1 || playerIndex !== room.gameState.currentPlayer) return;
+        if (playerIndex === -1 || playerIndex !== room.gameState.currentPlayer) {
+            console.error('Invalid player or not their turn:', { 
+                playerIndex, 
+                currentPlayer: room.gameState.currentPlayer 
+            });
+            return;
+        }
+
+        console.log('Processing game action:', { action, playerIndex, data });
 
         switch(action) {
             case 'makePrediction':
-                room.gameState.predictions[socket.id] = data.prediction;
+                const prediction = parseInt(data.prediction);
+                if (isNaN(prediction)) {
+                    console.error('Invalid prediction:', data);
+                    return;
+                }
+
+                // Validate prediction
+                const possibleSets = Object.values(room.gameState.hands)[0].length;
+                const currentTotal = Object.values(room.gameState.predictions).reduce((sum, pred) => sum + (pred || 0), 0);
+                
+                if (prediction < 0 || prediction > possibleSets) {
+                    console.error('Invalid prediction range:', { prediction, possibleSets });
+                    return;
+                }
+
+                // Special rule for last player
+                if (playerIndex === room.players.length - 1) {
+                    if (currentTotal + prediction === possibleSets) {
+                        console.error('Last player cannot make total equal possible sets');
+                        return;
+                    }
+                }
+
+                console.log('Valid prediction:', { 
+                    prediction, 
+                    currentTotal, 
+                    playerIndex 
+                });
+
+                room.gameState.predictions[socket.id] = prediction;
+                
+                // Check if all predictions are in
                 if (Object.keys(room.gameState.predictions).length === room.players.length) {
                     room.gameState.gamePhase = 'trump';
                     // Find highest predictor
                     let maxPrediction = -1;
                     let maxPredictor = 0;
                     room.players.forEach((player, index) => {
-                        const prediction = room.gameState.predictions[player.id];
-                        if (prediction > maxPrediction) {
-                            maxPrediction = prediction;
+                        const playerPrediction = room.gameState.predictions[player.id];
+                        if (playerPrediction > maxPrediction) {
+                            maxPrediction = playerPrediction;
                             maxPredictor = index;
                         }
                     });
                     room.gameState.currentPlayer = maxPredictor;
+                    console.log('All predictions in, moving to trump phase:', {
+                        maxPredictor,
+                        predictions: room.gameState.predictions
+                    });
                 } else {
                     room.gameState.currentPlayer = (playerIndex + 1) % room.players.length;
+                    console.log('Moving to next player for prediction:', room.gameState.currentPlayer);
                 }
                 break;
 

@@ -49,6 +49,32 @@ class Game {
         this.setsWon = {};
         this.scores = {};
         this.currentSet = [];
+        
+        // Bind event listeners
+        this.initializeEventListeners();
+    }
+
+    initializeEventListeners() {
+        console.log('Initializing event listeners');
+        const predictionSubmitBtn = document.getElementById('submit-prediction');
+        const trumpSubmitBtn = document.getElementById('submit-trump');
+
+        predictionSubmitBtn.addEventListener('click', () => {
+            console.log('Prediction submit button clicked');
+            const predictionInput = document.getElementById('prediction');
+            const prediction = parseInt(predictionInput.value);
+            if (isNaN(prediction)) {
+                alert('Please enter a valid number');
+                return;
+            }
+            this.submitPrediction(prediction);
+        });
+
+        trumpSubmitBtn.addEventListener('click', () => {
+            console.log('Trump submit button clicked');
+            const trumpSelect = document.getElementById('trump-select');
+            this.setTrump(trumpSelect.value);
+        });
     }
 
     updateFromState(gameState) {
@@ -173,11 +199,12 @@ class Game {
                 });
             }
 
-            // Show/hide controls based on game phase
+            // Update prediction controls
             const predictionControls = document.getElementById('prediction-controls');
             const trumpSelection = document.getElementById('trump-selection');
             const totalPredictions = document.getElementById('total-predictions');
             const totalSets = document.getElementById('total-sets');
+            const predictionInput = document.getElementById('prediction');
 
             predictionControls.classList.add('hidden');
             trumpSelection.classList.add('hidden');
@@ -191,8 +218,9 @@ class Game {
             // Show appropriate controls
             if (this.gamePhase === 'prediction' && this.currentPlayer === this.playerIndex) {
                 predictionControls.classList.remove('hidden');
+                // Reset prediction input
+                predictionInput.value = '';
                 // Set max prediction for last player
-                const predictionInput = document.getElementById('prediction');
                 if (this.playerIndex === this.players.length - 1) {
                     const maxAllowed = possibleSets - currentTotal;
                     predictionInput.max = maxAllowed;
@@ -239,10 +267,32 @@ class Game {
             return;
         }
 
+        const possibleSets = this.hands[this.players[0].id]?.length || 0;
+        const currentTotal = Object.values(this.predictions).reduce((sum, pred) => sum + pred, 0);
+
+        // Validate prediction
+        if (prediction < 0 || prediction > possibleSets) {
+            alert(`Prediction must be between 0 and ${possibleSets}`);
+            return;
+        }
+
+        // Special validation for last player
+        if (this.playerIndex === this.players.length - 1) {
+            if (currentTotal + prediction === possibleSets) {
+                alert(`Last player cannot make prediction that totals to ${possibleSets}`);
+                return;
+            }
+        }
+
+        console.log('Emitting prediction:', {
+            roomCode: currentRoom,
+            prediction: prediction
+        });
+
         socket.emit('gameAction', {
             roomCode: currentRoom,
             action: 'makePrediction',
-            data: { prediction: parseInt(prediction) }
+            data: { prediction: prediction }
         });
     }
 
