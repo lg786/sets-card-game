@@ -17,12 +17,72 @@ app.use(cors({
     allowedHeaders: ['Content-Type']
 }));
 
-// Basic route to verify server is running
 app.get('/', (req, res) => {
     res.send('Sets Game Server is running!');
 });
 
 const rooms = new Map();
+
+function generateDeck(numPlayers) {
+    const deck = [];
+    const suits = ['hearts', 'diamonds', 'clubs', 'spades'];
+    const values = Array.from({length: 13}, (_, i) => i + 2); // 2 to 14 (Ace)
+
+    // Remove appropriate 2s based on number of players
+    if (numPlayers === 5) {
+        // Remove two 2s (one black, one red)
+        values.shift(); // Remove first 2
+        suits.forEach(suit => {
+            if (suit !== 'hearts' && suit !== 'diamonds') { // Only for black suits
+                for (let value of values) {
+                    deck.push({ suit, value });
+                }
+            } else {
+                for (let value of values.slice(1)) { // Skip the 2 for red suits
+                    deck.push({ suit, value });
+                }
+            }
+        });
+    } else if (numPlayers === 6) {
+        // Remove all 2s
+        values.shift();
+        suits.forEach(suit => {
+            for (let value of values) {
+                deck.push({ suit, value });
+            }
+        });
+    } else {
+        // Use all cards for 4 players
+        suits.forEach(suit => {
+            for (let value of values) {
+                deck.push({ suit, value });
+            }
+        });
+    }
+
+    return deck;
+}
+
+function shuffleDeck(deck) {
+    for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    return deck;
+}
+
+function dealCards(deck, numPlayers) {
+    const hands = {};
+    const cardsPerPlayer = Math.floor(deck.length / numPlayers);
+    
+    for (let i = 0; i < numPlayers; i++) {
+        const start = i * cardsPerPlayer;
+        const end = start + cardsPerPlayer;
+        hands[i] = deck.slice(start, end);
+    }
+    
+    return hands;
+}
 
 function createGameState(numPlayers) {
     return {
@@ -33,9 +93,8 @@ function createGameState(numPlayers) {
         setsWon: {},
         scores: {},
         currentSet: [],
-        deck: [],
         hands: {},
-        visibleCards: {}, // Track which cards are visible for each player
+        visibleCards: {},
         gamePhase: 'preview'
     };
 }
@@ -78,28 +137,35 @@ io.on('connection', (socket) => {
         const player = room.players.find(p => p.id === socket.id);
         if (!player || !player.isHost) return;
 
+        console.log('Starting game with settings:', settings);
+
+        // Initialize game state
         room.settings = settings;
         room.gameState = createGameState(room.players.length);
         room.gameState.gamePhase = 'preview';
         room.gameState.players = room.players;
-        
-        // Deal initial cards
-        const numPlayers = room.players.length;
-        const cardsPerPlayer = numPlayers === 4 ? 13 : (numPlayers === 5 ? 10 : 8);
-        
-        room.players.forEach((player) => {
-            // Deal cards
-            room.gameState.hands[player.id] = Array(cardsPerPlayer).fill(null).map(() => ({
-                suit: ['hearts', 'diamonds', 'clubs', 'spades'][Math.floor(Math.random() * 4)],
-                value: Math.floor(Math.random() * 13) + 2
-            }));
 
+        // Generate and shuffle deck
+        const deck = shuffleDeck(generateDeck(room.players.length));
+        console.log('Generated deck:', deck.length, 'cards');
+
+        // Deal cards to each player
+        const hands = dealCards(deck, room.players.length);
+        room.players.forEach((player, index) => {
+            room.gameState.hands[player.id] = hands[index];
+            
             // Select 4 random cards to be visible initially
             const visibleIndices = new Set();
             while (visibleIndices.size < 4) {
-                visibleIndices.add(Math.floor(Math.random() * cardsPerPlayer));
+                visibleIndices.add(Math.floor(Math.random() * hands[index].length));
             }
             room.gameState.visibleCards[player.id] = Array.from(visibleIndices);
+        });
+
+        console.log('Dealt cards to players:', {
+            numPlayers: room.players.length,
+            handsDealt: Object.keys(room.gameState.hands).length,
+            cardsPerHand: Object.values(room.gameState.hands)[0].length
         });
 
         // Send game state to each player
@@ -167,7 +233,23 @@ io.on('connection', (socket) => {
 
                 if (room.gameState.currentSet.length === room.players.length) {
                     // Determine winner of the set
-                    // ... (implement set winner logic)
+                    let winningCard = room.gameState.currentSet[0];
+                    for (let i = 1; i < room.gameState.currentSet.length; i++) {
+                        const currentCard = room.gameState.currentSet[i];
+                        if (currentCard.card.suit === room.gameState.trumpSuit && 
+                            winningCard.card.suit !== room.gameState.trumpSuit) {
+                            winningCard = currentCard;
+                        } else if (currentCard.card.suit === winningCard.card.suit && 
+                                 currentCard.card.value > winningCard.card.value) {
+                            winningCard = currentCard;
+                        }
+                    }
+                    
+                    // Update scores
+                    const winner = room.players.findIndex(p => p.id === winningCard.playerId);
+                    room.gameState.setsWon[winningCard.playerId] = 
+                        (room.gameState.setsWon[winningCard.playerId] || 0) + 1;
+                    room.gameState.currentPlayer = winner;
                     room.gameState.currentSet = [];
                 } else {
                     room.gameState.currentPlayer = (playerIndex + 1) % room.players.length;
