@@ -99,7 +99,6 @@ class Game {
         console.log('Updating UI with state:', {
             phase: this.gamePhase,
             playerIndex: this.playerIndex,
-            visibleCards: this.visibleCards,
             currentPlayer: this.currentPlayer,
             players: this.players?.length,
             hands: this.hands ? Object.keys(this.hands).length : 0
@@ -118,7 +117,7 @@ class Game {
                     const playerDiv = document.createElement('div');
                     playerDiv.className = `player-info ${index === this.currentPlayer ? 'active' : ''}`;
                     playerDiv.innerHTML = `
-                        <div>${player.name}</div>
+                        <div>${player.name}${index === this.currentPlayer ? ' (Current Turn)' : ''}</div>
                         <div>Prediction: ${this.predictions[player.id] !== undefined ? this.predictions[player.id] : '-'}</div>
                         <div>Sets Won: ${this.setsWon[player.id] || 0}</div>
                         <div>Score: ${this.scores[player.id] || 0}</div>
@@ -159,14 +158,7 @@ class Game {
                         }
                         playerHand.appendChild(cardDiv);
                     });
-                } else {
-                    console.warn('No hand found for current player:', currentPlayer.id);
                 }
-            } else {
-                console.warn('Invalid player index or players array:', {
-                    playerIndex: this.playerIndex,
-                    playersLength: this.players?.length
-                });
             }
 
             // Update played cards
@@ -184,15 +176,34 @@ class Game {
             // Show/hide controls based on game phase
             const predictionControls = document.getElementById('prediction-controls');
             const trumpSelection = document.getElementById('trump-selection');
+            const totalPredictions = document.getElementById('total-predictions');
+            const totalSets = document.getElementById('total-sets');
 
             predictionControls.classList.add('hidden');
             trumpSelection.classList.add('hidden');
 
+            // Update prediction totals
+            const currentTotal = Object.values(this.predictions).reduce((sum, pred) => sum + pred, 0);
+            const possibleSets = this.hands[this.players[0].id]?.length || 0;
+            totalPredictions.textContent = currentTotal;
+            totalSets.textContent = possibleSets;
+
+            // Show appropriate controls
             if (this.gamePhase === 'prediction' && this.currentPlayer === this.playerIndex) {
                 predictionControls.classList.remove('hidden');
+                // Set max prediction for last player
+                const predictionInput = document.getElementById('prediction');
+                if (this.playerIndex === this.players.length - 1) {
+                    const maxAllowed = possibleSets - currentTotal;
+                    predictionInput.max = maxAllowed;
+                    predictionInput.title = `Cannot predict ${maxAllowed} to make total equal ${possibleSets}`;
+                } else {
+                    predictionInput.max = possibleSets;
+                }
             } else if (this.gamePhase === 'trump' && this.currentPlayer === this.playerIndex) {
                 trumpSelection.classList.remove('hidden');
             }
+
         } catch (error) {
             console.error('Error updating UI:', error);
         }
@@ -218,11 +229,20 @@ class Game {
     }
 
     submitPrediction(prediction) {
-        if (this.gamePhase !== 'prediction' || this.currentPlayer !== this.playerIndex) return;
+        console.log('Submitting prediction:', prediction);
+        if (this.gamePhase !== 'prediction' || this.currentPlayer !== this.playerIndex) {
+            console.warn('Cannot submit prediction now:', {
+                phase: this.gamePhase,
+                currentPlayer: this.currentPlayer,
+                playerIndex: this.playerIndex
+            });
+            return;
+        }
+
         socket.emit('gameAction', {
             roomCode: currentRoom,
             action: 'makePrediction',
-            data: { prediction }
+            data: { prediction: parseInt(prediction) }
         });
     }
 

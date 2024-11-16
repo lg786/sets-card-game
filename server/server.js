@@ -142,8 +142,9 @@ io.on('connection', (socket) => {
         // Initialize game state
         room.settings = settings;
         room.gameState = createGameState(room.players.length);
-        room.gameState.gamePhase = 'preview';
+        room.gameState.gamePhase = 'prediction';
         room.gameState.players = room.players;
+        room.gameState.currentPlayer = 0;
 
         // Generate and shuffle deck
         const deck = shuffleDeck(generateDeck(room.players.length));
@@ -165,7 +166,9 @@ io.on('connection', (socket) => {
         console.log('Dealt cards to players:', {
             numPlayers: room.players.length,
             handsDealt: Object.keys(room.gameState.hands).length,
-            cardsPerHand: Object.values(room.gameState.hands)[0].length
+            cardsPerHand: Object.values(room.gameState.hands)[0].length,
+            gamePhase: room.gameState.gamePhase,
+            currentPlayer: room.gameState.currentPlayer
         });
 
         // Send game state to each player
